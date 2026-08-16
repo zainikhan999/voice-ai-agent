@@ -11,24 +11,33 @@ from app.validators import validate_and_normalize_phone
 
 router = APIRouter(prefix="/patients", tags=["Patients"])
 
-# Ensure logs directory exists
-LOGS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "logs")
-os.makedirs(LOGS_DIR, exist_ok=True)
-CALL_LOG_PATH = os.path.join(LOGS_DIR, "calls.log")
+# Handle read-only filesystem environments (e.g. Vercel Serverless / AWS Lambda)
+try:
+    LOGS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "logs")
+    os.makedirs(LOGS_DIR, exist_ok=True)
+    CALL_LOG_PATH = os.path.join(LOGS_DIR, "calls.log")
+except Exception:
+    LOGS_DIR = "/tmp/logs"
+    try:
+        os.makedirs(LOGS_DIR, exist_ok=True)
+        CALL_LOG_PATH = os.path.join(LOGS_DIR, "calls.log")
+    except Exception:
+        CALL_LOG_PATH = "/tmp/calls.log"
 
 
 def log_call_activity(action: str, patient_data: dict):
-    """Logs patient creation and update activities with UTC timestamp to logs/calls.log."""
+    """Logs patient creation and update activities with UTC timestamp to calls.log and stdout."""
     try:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "action": action,
             "payload": patient_data
         }
+        print(f"[AUDIT_LOG] {json.dumps(log_entry, default=str)}")
         with open(CALL_LOG_PATH, "a", encoding="utf-8") as f:
             f.write(json.dumps(log_entry, default=str) + "\n")
     except Exception as e:
-        print(f"Error writing to calls.log: {e}")
+        print(f"Call logging write warning: {e}")
 
 
 @router.get("/check", response_model=APIResponse[Optional[PatientResponse]])

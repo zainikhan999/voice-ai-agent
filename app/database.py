@@ -10,16 +10,19 @@ logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./patients.db")
 
-# Standard SQLite requires check_same_thread=False for multi-threaded FastAPI execution.
-connect_args = {}
-if DATABASE_URL.startswith("sqlite:"):
-    connect_args["check_same_thread"] = False
-
 try:
-    engine = create_engine(DATABASE_URL, connect_args=connect_args)
+    if DATABASE_URL.startswith("sqlitecloud://"):
+        import sqlitecloud
+        engine = create_engine(
+            "sqlite://",
+            creator=lambda: sqlitecloud.connect(DATABASE_URL)
+        )
+    else:
+        connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite:") else {}
+        engine = create_engine(DATABASE_URL, connect_args=connect_args)
 except Exception as e:
-    logger.warning(f"Failed to initialize database with URL {DATABASE_URL}: {e}. Falling back to local SQLite.")
-    FALLBACK_URL = "sqlite:///./patients.db"
+    logger.warning(f"Failed to initialize database with URL {DATABASE_URL}: {e}. Falling back to SQLite.")
+    FALLBACK_URL = "sqlite:///./patients.db" if not os.environ.get("VERCEL") else "sqlite:///:memory:"
     engine = create_engine(FALLBACK_URL, connect_args={"check_same_thread": False})
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
