@@ -10,12 +10,25 @@ logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./patients.db")
 
+def get_sqlitecloud_conn():
+    import sqlitecloud
+    conn = sqlitecloud.connect(DATABASE_URL)
+    orig_cf = getattr(conn, "create_function", None)
+    if orig_cf:
+        def safe_cf(name, num_params, func, *args, **kwargs):
+            try:
+                return orig_cf(name, num_params, func)
+            except Exception:
+                pass
+        conn.create_function = safe_cf
+    return conn
+
+
 try:
     if DATABASE_URL.startswith("sqlitecloud://"):
-        import sqlitecloud
         engine = create_engine(
             "sqlite://",
-            creator=lambda: sqlitecloud.connect(DATABASE_URL)
+            creator=get_sqlitecloud_conn
         )
     else:
         connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite:") else {}
