@@ -8,27 +8,29 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+# Monkeypatch sqlitecloud.dbapi2.Connection.create_function to handle SQLAlchemy's deterministic=True keyword arg
+try:
+    import sqlitecloud.dbapi2 as sqlitecloud_db2
+    _orig_create_function = sqlitecloud_db2.Connection.create_function
+
+    def _safe_create_function(self, name, num_params, func, *args, **kwargs):
+        try:
+            return _orig_create_function(self, name, num_params, func)
+        except Exception:
+            pass
+
+    sqlitecloud_db2.Connection.create_function = _safe_create_function
+except Exception as patch_err:
+    logger.warning(f"Could not patch sqlitecloud.dbapi2: {patch_err}")
+
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./patients.db")
-
-def get_sqlitecloud_conn():
-    import sqlitecloud
-    conn = sqlitecloud.connect(DATABASE_URL)
-    orig_cf = getattr(conn, "create_function", None)
-    if orig_cf:
-        def safe_cf(name, num_params, func, *args, **kwargs):
-            try:
-                return orig_cf(name, num_params, func)
-            except Exception:
-                pass
-        conn.create_function = safe_cf
-    return conn
-
 
 try:
     if DATABASE_URL.startswith("sqlitecloud://"):
+        import sqlitecloud
         engine = create_engine(
             "sqlite://",
-            creator=get_sqlitecloud_conn
+            creator=lambda: sqlitecloud.connect(DATABASE_URL)
         )
     else:
         connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite:") else {}
